@@ -1,0 +1,1386 @@
+<div id="sort-lab" class="sort-lab">
+  <style>
+    #sort-lab {
+      --accent: #5276e8;
+      --accent-bg: #e9efff;
+      --good: #23845b;
+      --good-bg: #e1f5e9;
+      --compare: #d78b23;
+      --compare-bg: #fff0d6;
+      --line: #dfe3eb;
+      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+      color: #202635;
+      max-width: 1100px;
+      margin: 20px auto;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      overflow: hidden;
+      background: #fff;
+      box-sizing: border-box;
+    }
+
+    #sort-lab * { box-sizing: border-box; }
+
+    #sort-lab .sl-head {
+      padding: 22px 22px 12px;
+    }
+
+    #sort-lab h2 {
+      font-size: 21px;
+      margin: 0 0 6px;
+    }
+
+    #sort-lab .sl-muted {
+      color: #687184;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    /* Entrada de datos, colocada encima de las pestañas */
+
+    #sort-lab .sl-inputs {
+      padding: 8px 22px 20px;
+      display: flex;
+      gap: 9px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    #sort-lab .sl-inputs label {
+      font-size: 12px;
+      font-weight: 700;
+      width: 100%;
+    }
+
+    #sort-lab .sl-inputs input[type="text"] {
+      flex: 1 1 240px;
+      min-width: 0;
+      border: 1px solid #cdd3df;
+      border-radius: 9px;
+      padding: 10px;
+      font: inherit;
+      font-size: 13px;
+    }
+
+    #sort-lab .sl-error {
+      color: #b42318;
+      font-size: 12px;
+      width: 100%;
+    }
+
+    /* Botones de los algoritmos */
+
+    #sort-lab .sl-tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 0 22px 18px;
+    }
+
+    #sort-lab button {
+      font: inherit;
+      cursor: pointer;
+      border-radius: 9px;
+      border: 1px solid var(--line);
+      background: white;
+      color: #293247;
+      padding: 9px 13px;
+      font-size: 13px;
+    }
+
+    #sort-lab button:focus-visible,
+    #sort-lab input:focus-visible {
+      outline: 3px solid #a9bcff;
+      outline-offset: 2px;
+    }
+
+    #sort-lab .sl-tabs button[aria-selected="true"] {
+      background: var(--accent-bg);
+      border-color: var(--accent);
+      color: #284bb4;
+      font-weight: 700;
+    }
+
+    /* Área de visualización */
+
+    #sort-lab .sl-stage {
+      background: #fafbfe;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      padding: 20px;
+    }
+
+    #sort-lab .sl-step-title {
+      font-weight: 750;
+      text-align: center;
+      font-size: 15px;
+    }
+
+    #sort-lab .sl-details {
+      color: #687184;
+      font-size: 12px;
+      line-height: 1.6;
+      text-align: center;
+      margin: 6px 0 20px;
+    }
+
+    /* Barras y pseudocódigo en paralelo */
+
+    #sort-lab .sl-workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    #sort-lab .sl-visual-panel,
+    #sort-lab .sl-code-panel {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      overflow: hidden;
+    }
+
+    #sort-lab .sl-panel-heading {
+      font-size: 13px;
+      font-weight: 750;
+      padding: 13px 15px;
+      border-bottom: 1px solid var(--line);
+      background: #f7f8fc;
+    }
+
+    #sort-lab .sl-visual-inner {
+      padding: 20px 14px 14px;
+    }
+
+    #sort-lab .sl-bars {
+      display: grid;
+      grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+      gap: clamp(3px, 1.5vw, 10px);
+      height: 220px;
+      align-items: end;
+      border-bottom: 2px solid #cdd3df;
+      padding: 0 3px;
+    }
+
+    #sort-lab .sl-col {
+      height: 100%;
+      display: flex;
+      align-items: end;
+      justify-content: center;
+      min-width: 0;
+    }
+
+    #sort-lab .sl-bar {
+      width: 100%;
+      max-width: 54px;
+      min-height: 24px;
+      display: flex;
+      justify-content: center;
+      align-items: start;
+      padding-top: 7px;
+      border: 1px solid #cdd3df;
+      border-bottom: 0;
+      border-radius: 7px 7px 0 0;
+      background: #e9edf4;
+      color: #273249;
+      font-size: 12px;
+      font-weight: 750;
+      transition:
+        height .25s ease,
+        background .2s ease,
+        border-color .2s ease;
+    }
+
+    #sort-lab .sl-bar.candidate {
+      background: var(--accent-bg);
+      border: 2px solid var(--accent);
+      border-bottom: 0;
+    }
+
+    #sort-lab .sl-bar.comparing {
+      background: var(--compare-bg);
+      border: 2px solid var(--compare);
+      border-bottom: 0;
+    }
+
+    #sort-lab .sl-bar.sorted {
+      background: var(--good-bg);
+      border: 1px solid var(--good);
+      border-bottom: 0;
+    }
+
+    #sort-lab .sl-positions {
+      display: grid;
+      grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+      gap: clamp(3px, 1.5vw, 10px);
+      padding-top: 8px;
+      color: #7a8394;
+      text-align: center;
+      font-size: 11px;
+    }
+
+    #sort-lab .sl-legend {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 11px;
+      color: #606b7e;
+      padding-top: 18px;
+    }
+
+    #sort-lab .sl-dot {
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      border-radius: 3px;
+      margin-right: 5px;
+    }
+
+    /* Panel de pseudocódigo */
+
+    #sort-lab .sl-code-description {
+      padding: 12px 14px;
+      color: #687184;
+      font-size: 12px;
+      line-height: 1.5;
+      border-bottom: 1px solid #edf0f5;
+    }
+
+    #sort-lab .sl-code {
+      padding: 12px 0;
+      overflow-x: auto;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.85;
+      background: #fff;
+    }
+
+    #sort-lab .sl-code-line {
+      display: grid;
+      grid-template-columns: 32px minmax(0, 1fr);
+      gap: 8px;
+      padding: 3px 12px 3px 0;
+      border-left: 3px solid transparent;
+      min-width: max-content;
+      white-space: pre;
+      color: #374151;
+      transition: background .15s ease;
+    }
+
+    #sort-lab .sl-line-number {
+      text-align: right;
+      color: #9aa2b1;
+      user-select: none;
+    }
+
+    #sort-lab .sl-line-text {
+      padding-right: 12px;
+    }
+
+    #sort-lab .sl-code-line.active {
+      background: #e9efff;
+      border-left-color: #5276e8;
+      color: #2445a8;
+      font-weight: 750;
+    }
+
+    #sort-lab .sl-code-line.active .sl-line-number {
+      color: #284bb4;
+      font-weight: 750;
+    }
+
+    #sort-lab .sl-code-note {
+      height: 130px;
+      box-sizing: border-box;
+      overflow-y: auto;
+      margin: 12px;
+      padding: 11px;
+      border-radius: 8px;
+      background: #f3f5fa;
+      color: #505b70;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    #sort-lab .sl-code-note strong {
+      display: block;
+      margin-bottom: 4px;
+      color: #293247;
+    }
+
+    /* Explicación y estadísticas */
+
+    #sort-lab .sl-description {
+      padding: 16px 0 4px;
+      border-top: 1px solid var(--line);
+      margin-top: 16px;
+    }
+
+    #sort-lab .sl-message {
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: 44px;
+    }
+
+    #sort-lab .sl-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    #sort-lab .sl-stat {
+      background: #f1f3f8;
+      border-radius: 8px;
+      padding: 8px 11px;
+      font-size: 12px;
+      color: #505b70;
+    }
+
+    #sort-lab .sl-progress {
+      height: 5px;
+      background: #e8ebf2;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 18px;
+    }
+
+    #sort-lab .sl-progress > div {
+      height: 100%;
+      width: 0;
+      background: var(--accent);
+      border-radius: inherit;
+      transition: width .15s;
+    }
+
+    /* Controles integrados debajo de la visualización */
+
+    #sort-lab .sl-controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      padding: 14px 0 2px;
+    }
+
+    #sort-lab .sl-controls .primary {
+      color: white;
+      background: #344fbb;
+      border-color: #344fbb;
+      font-weight: 700;
+    }
+
+    #sort-lab .sl-controls button:disabled {
+      opacity: .4;
+      cursor: not-allowed;
+    }
+
+    #sort-lab .sl-speed {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-left: auto;
+      font-size: 12px;
+      color: #687184;
+    }
+
+    #sort-lab input[type="range"] {
+      width: 95px;
+    }
+
+    @media(max-width: 760px) {
+      #sort-lab .sl-workspace {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      #sort-lab .sl-code-panel {
+        margin-top: 0;
+      }
+
+      #sort-lab .sl-code {
+        max-height: 350px;
+        overflow-y: auto;
+      }
+
+      #sort-lab .sl-bars {
+        height: 190px;
+      }
+    }
+
+    @media(max-width: 480px) {
+      #sort-lab .sl-head {
+        padding: 18px 15px 12px;
+      }
+
+      #sort-lab .sl-inputs {
+        padding: 8px 15px 18px;
+      }
+
+      #sort-lab .sl-tabs {
+        padding: 0 15px 15px;
+      }
+
+      #sort-lab .sl-stage {
+        padding: 14px 10px;
+      }
+
+      #sort-lab .sl-bars {
+        height: 165px;
+      }
+
+      #sort-lab .sl-bar {
+        font-size: 10px;
+        padding-top: 5px;
+      }
+
+      #sort-lab .sl-description {
+        padding: 14px 0 4px;
+      }
+
+      #sort-lab .sl-controls {
+        padding: 12px 0 2px;
+      }
+
+      #sort-lab .sl-speed {
+        margin-left: 0;
+      }
+    }
+
+    @media(prefers-reduced-motion: reduce) {
+      #sort-lab .sl-bar,
+      #sort-lab .sl-progress > div,
+      #sort-lab .sl-code-line {
+        transition: none;
+      }
+    }
+  </style>
+
+  <!-- Título -->
+  <div class="sl-head">
+    <h2>Laboratorio de algoritmos de ordenación</h2>
+    <div class="sl-muted">
+      Explora cada comparación y observa cómo se ordenan los números, paso a paso.
+    </div>
+  </div>
+
+  <!-- Entrada de datos: ahora aparece arriba -->
+  <div class="sl-inputs">
+    <label for="sl-array-input">Números (separados por comas)</label>
+    <input
+      type="text"
+      id="sl-array-input"
+      data-input
+      value="6, 3, 8, 2, 7, 1, 5, 4"
+      maxlength="100"
+    >
+    <button type="button" data-apply>Aplicar números</button>
+    <div class="sl-error" data-error role="status"></div>
+  </div>
+
+  <!-- Selector de algoritmo -->
+  <div class="sl-tabs" role="tablist" aria-label="Algoritmo de ordenación">
+    <button type="button" role="tab" data-algo="bubble" aria-selected="true">
+      Bubble Sort
+    </button>
+    <button type="button" role="tab" data-algo="selection" aria-selected="false">
+      Selection Sort
+    </button>
+    <button type="button" role="tab" data-algo="insertion" aria-selected="false">
+      Insertion Sort
+    </button>
+  </div>
+
+  <!-- Zona principal -->
+  <div class="sl-stage">
+    <div class="sl-step-title" data-title>Estado inicial</div>
+    <div class="sl-details" data-details>Preparado para empezar</div>
+
+    <div class="sl-workspace">
+
+      <!-- Visualización de barras -->
+      <section class="sl-visual-panel" aria-label="Visualización de las barras">
+        <div class="sl-panel-heading">Visualización del array</div>
+
+        <div class="sl-visual-inner">
+          <div
+            class="sl-bars"
+            data-bars
+            style="--n:8"
+            role="img"
+            aria-label="Visualización del array"
+          ></div>
+
+          <div
+            class="sl-positions"
+            data-positions
+            style="--n:8"
+            aria-hidden="true"
+          ></div>
+
+          <div class="sl-legend">
+            <span>
+              <i class="sl-dot" style="background:#e9edf4;border:1px solid #cdd3df"></i>
+              Sin ordenar
+            </span>
+            <span>
+              <i class="sl-dot" style="background:#fff0d6;border:1px solid #d78b23"></i>
+              Comparación
+            </span>
+            <span>
+              <i class="sl-dot" style="background:#e9efff;border:1px solid #5276e8"></i>
+              Elemento activo
+            </span>
+            <span>
+              <i class="sl-dot" style="background:#e1f5e9;border:1px solid #23845b"></i>
+              Posición confirmada
+            </span>
+          </div>
+
+          <!-- Progreso, explicación, estadísticas y controles integrados -->
+          <div class="sl-progress" aria-hidden="true">
+            <div data-progress></div>
+          </div>
+
+          <div class="sl-description">
+            <div class="sl-message" data-message aria-live="polite">
+              Pulsa «Siguiente» para comenzar.
+            </div>
+
+            <div class="sl-stats">
+              <div class="sl-stat">
+                Paso: <strong data-step>0 / 0</strong>
+              </div>
+              <div class="sl-stat">
+                Comparaciones: <strong data-comparisons>0</strong>
+              </div>
+              <div class="sl-stat">
+                Intercambios / movimientos: <strong data-moves>0</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="sl-controls">
+            <button type="button" data-prev disabled>← Anterior</button>
+            <button type="button" class="primary" data-play>▶ Reproducir</button>
+            <button type="button" data-next>Siguiente →</button>
+            <button type="button" data-reset>↺ Reiniciar</button>
+
+            <label class="sl-speed">
+              Velocidad
+              <input
+                type="range"
+                data-speed
+                min="1"
+                max="5"
+                value="3"
+                aria-label="Velocidad de reproducción"
+              >
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <!-- Pseudocódigo dinámico -->
+      <section class="sl-code-panel" aria-label="Pseudocódigo del algoritmo">
+        <div class="sl-panel-heading" data-code-title>
+          Pseudocódigo · Bubble Sort
+        </div>
+
+        <div class="sl-code-description" data-code-description>
+          Compara parejas contiguas e intercambia sus posiciones cuando están desordenadas.
+          La línea activa se resaltará durante la ejecución.
+        </div>
+
+        <div class="sl-code" data-code aria-label="Pseudocódigo con línea activa"></div>
+
+        <div class="sl-code-note">
+          <strong>¿Qué estoy viendo?</strong>
+          <span data-code-note>
+            Pulsa «Siguiente» para iniciar el algoritmo y ver qué línea se ejecuta.
+          </span>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <script>
+  (() => {
+    const root = document.getElementById('sort-lab');
+
+    if (!root || root.dataset.initialized) return;
+    root.dataset.initialized = 'true';
+
+    const $ = selector => root.querySelector(selector);
+
+    const bars = $('[data-bars]');
+    const positions = $('[data-positions]');
+    const title = $('[data-title]');
+    const details = $('[data-details]');
+    const message = $('[data-message]');
+    const stepLabel = $('[data-step]');
+    const comparisonsLabel = $('[data-comparisons]');
+    const movesLabel = $('[data-moves]');
+    const progress = $('[data-progress]');
+    const prevBtn = $('[data-prev]');
+    const nextBtn = $('[data-next]');
+    const playBtn = $('[data-play]');
+    const speedInput = $('[data-speed]');
+    const input = $('[data-input]');
+    const error = $('[data-error]');
+    const codeBox = $('[data-code]');
+    const codeTitle = $('[data-code-title]');
+    const codeDescription = $('[data-code-description]');
+    const codeNote = $('[data-code-note]');
+
+    let original = [6, 3, 8, 2, 7, 1, 5, 4];
+    let algorithm = 'bubble';
+    let frames = [];
+    let index = 0;
+    let timer = null;
+
+    /*
+      Cada línea del pseudocódigo tiene un índice.
+      Los pasos de la animación señalan el índice que debe iluminarse.
+    */
+
+    const pseudocode = {
+      bubble: {
+        title: 'Pseudocódigo · Bubble Sort',
+        description:
+          'Compara elementos adyacentes. Si están en orden incorrecto, los intercambia.',
+        lines: [
+          'para fin desde n - 1 hasta 1:',
+          '    huboIntercambio = falso',
+          '    para j desde 0 hasta fin - 1:',
+          '        comparar A[j] y A[j + 1]',
+          '        si A[j] > A[j + 1]:',
+          '            intercambiar A[j], A[j + 1]',
+          '            huboIntercambio = verdadero',
+          '    confirmar A[fin]',
+          '    si no huboIntercambio: terminar'
+        ]
+      },
+
+      selection: {
+        title: 'Pseudocódigo · Selection Sort',
+        description:
+          'Busca el mínimo de la parte no ordenada y lo coloca en la siguiente posición.',
+        lines: [
+          'para i desde 0 hasta n - 2:',
+          '    minimo = i',
+          '    para j desde i + 1 hasta n - 1:',
+          '        comparar A[j] y A[minimo]',
+          '        si A[j] < A[minimo]:',
+          '            minimo = j',
+          '    si minimo != i:',
+          '        intercambiar A[i], A[minimo]',
+          '    confirmar A[i]'
+        ]
+      },
+
+      insertion: {
+        title: 'Pseudocódigo · Insertion Sort',
+        description:
+          'Toma un elemento y lo inserta en la posición correcta de la parte izquierda ordenada.',
+        lines: [
+          'para i desde 1 hasta n - 1:',
+          '    clave = A[i]',
+          '    j = i - 1',
+          '    mientras j >= 0:',
+          '        comparar A[j] con clave',
+          '        si A[j] <= clave: salir',
+          '        A[j + 1] = A[j]',
+          '        j = j - 1',
+          '    A[j + 1] = clave'
+        ]
+      }
+    };
+
+    function frame(arr, info = {}) {
+      frames.push({
+        arr: arr.slice(),
+        i: null,
+        j: null,
+        keyIndex: null,
+        sorted: [],
+        comparisons: 0,
+        moves: 0,
+        line: 0,
+        title: 'Procesando',
+        message: '',
+        note: '',
+        ...info
+      });
+    }
+
+    /* ---------------- Bubble Sort ---------------- */
+
+    function buildBubble() {
+      const a = original.slice();
+      let comparisons = 0;
+      let moves = 0;
+      let sortedStart = a.length;
+
+      frame(a, {
+        line: 0,
+        title: 'Estado inicial',
+        message: 'Bubble Sort compara parejas contiguas e intercambia las que están en orden incorrecto.',
+        note: 'El algoritmo comienza en la primera posición y recorre el array comparando vecinos.'
+      });
+
+      for (let end = a.length - 1; end > 0; end--) {
+        let changed = false;
+
+        frame(a, {
+          line: 1,
+          sorted: Array.from(
+            { length: a.length - sortedStart },
+            (_, k) => sortedStart + k
+          ),
+          title: `Inicio de la pasada ${a.length - end}`,
+          message: 'Empezamos una nueva pasada por la parte que todavía no está ordenada.',
+          note: 'Se reinicia la variable que permite detectar si hubo intercambios.'
+        });
+
+        for (let j = 0; j < end; j++) {
+          comparisons++;
+
+          frame(a, {
+            i: j,
+            j: j + 1,
+            line: 3,
+            sorted: Array.from(
+              { length: a.length - sortedStart },
+              (_, k) => sortedStart + k
+            ),
+            comparisons,
+            moves,
+            title: `Pasada ${a.length - end}: comparación`,
+            message: `Comparamos ${a[j]} y ${a[j + 1]}.`,
+            note: 'La línea resaltada representa la comparación de dos elementos adyacentes.'
+          });
+
+          if (a[j] > a[j + 1]) {
+            frame(a, {
+              i: j,
+              j: j + 1,
+              line: 4,
+              sorted: Array.from(
+                { length: a.length - sortedStart },
+                (_, k) => sortedStart + k
+              ),
+              comparisons,
+              moves,
+              title: 'Detectado un par desordenado',
+              message: `${a[j]} es mayor que ${a[j + 1]}. Hay que intercambiar sus posiciones.`,
+              note: 'La condición se cumple: el elemento de la izquierda es mayor que el de la derecha.'
+            });
+
+            [a[j], a[j + 1]] = [a[j + 1], a[j]];
+            moves++;
+            changed = true;
+
+            frame(a, {
+              i: j,
+              j: j + 1,
+              line: 5,
+              sorted: Array.from(
+                { length: a.length - sortedStart },
+                (_, k) => sortedStart + k
+              ),
+              comparisons,
+              moves,
+              title: 'Intercambio',
+              message: 'Los elementos han cambiado de posición.',
+              note: 'El valor mayor avanza una posición hacia el extremo derecho del array.'
+            });
+
+            frame(a, {
+              i: j,
+              j: j + 1,
+              line: 6,
+              sorted: Array.from(
+                { length: a.length - sortedStart },
+                (_, k) => sortedStart + k
+              ),
+              comparisons,
+              moves,
+              title: 'Registrar el intercambio',
+              message: 'Indicamos que hubo un intercambio durante esta pasada.',
+              note: 'Esta variable sirve para saber si una pasada completa ha encontrado elementos desordenados.'
+            });
+          }
+        }
+
+        /*
+          El sufijo solo se confirma después de finalizar la pasada.
+          Así no se colorea de verde anticipadamente.
+        */
+        sortedStart = end;
+
+        frame(a, {
+          line: 7,
+          sorted: Array.from(
+            { length: a.length - sortedStart },
+            (_, k) => sortedStart + k
+          ),
+          comparisons,
+          moves,
+          title: 'Fin de la pasada',
+          message: `El valor ${a[end]} queda confirmado en su posición final.`,
+          note: 'Al terminar la pasada, el elemento más grande de la zona recorrida queda en su posición definitiva.'
+        });
+
+        if (!changed) {
+          frame(a, {
+            line: 8,
+            sorted: a.map((_, i) => i),
+            comparisons,
+            moves,
+            title: 'No hubo intercambios',
+            message: 'El array ya está ordenado y no hacen falta más pasadas.',
+            note: 'Si no hay intercambios durante una pasada completa, el algoritmo puede terminar.'
+          });
+          break;
+        }
+      }
+
+      frame(a, {
+        line: 8,
+        sorted: a.map((_, i) => i),
+        comparisons,
+        moves,
+        title: '¡Array ordenado!',
+        message: 'Bubble Sort ha terminado: todos los elementos están ordenados.',
+        note: 'La ordenación ha concluido.'
+      });
+    }
+
+    /* ---------------- Selection Sort ---------------- */
+
+    function buildSelection() {
+      const a = original.slice();
+      let comparisons = 0;
+      let moves = 0;
+
+      frame(a, {
+        line: 0,
+        title: 'Estado inicial',
+        message: 'Selection Sort busca el mínimo de la parte no ordenada y lo coloca en su posición.',
+        note: 'La zona izquierda irá creciendo a medida que confirmamos elementos.'
+      });
+
+      for (let i = 0; i < a.length - 1; i++) {
+        let min = i;
+
+        frame(a, {
+          i: min,
+          line: 1,
+          sorted: Array.from({ length: i }, (_, k) => k),
+          comparisons,
+          moves,
+          title: `Pasada ${i + 1}: elegir mínimo`,
+          message: `Tomamos ${a[min]} como mínimo provisional.`,
+          note: 'El mínimo provisional es el elemento más pequeño encontrado hasta el momento.'
+        });
+
+        for (let j = i + 1; j < a.length; j++) {
+          comparisons++;
+
+          frame(a, {
+            i: min,
+            j,
+            line: 3,
+            sorted: Array.from({ length: i }, (_, k) => k),
+            comparisons,
+            moves,
+            title: 'Comparar candidatos',
+            message: `Comparamos el mínimo provisional ${a[min]} con ${a[j]}.`,
+            note: 'Se compara el elemento actual con el mínimo provisional.'
+          });
+
+          if (a[j] < a[min]) {
+            frame(a, {
+              i: min,
+              j,
+              line: 4,
+              sorted: Array.from({ length: i }, (_, k) => k),
+              comparisons,
+              moves,
+              title: 'Encontrar un mínimo menor',
+              message: `${a[j]} es menor que ${a[min]}.`,
+              note: 'Se ha encontrado un valor menor que el mínimo provisional.'
+            });
+
+            min = j;
+
+            frame(a, {
+              i: min,
+              j,
+              line: 5,
+              sorted: Array.from({ length: i }, (_, k) => k),
+              comparisons,
+              moves,
+              title: 'Actualizar mínimo',
+              message: `${a[min]} pasa a ser el nuevo mínimo provisional.`,
+              note: 'Guardamos la posición del menor elemento encontrado.'
+            });
+          }
+        }
+
+        if (min !== i) {
+          frame(a, {
+            i,
+            j: min,
+            line: 6,
+            sorted: Array.from({ length: i }, (_, k) => k),
+            comparisons,
+            moves,
+            title: 'Preparar intercambio',
+            message: `El mínimo está en la posición ${min + 1}; hay que colocarlo en la posición ${i + 1}.`,
+            note: 'El mínimo encontrado no está todavía al principio de la zona no ordenada.'
+          });
+
+          [a[i], a[min]] = [a[min], a[i]];
+          moves++;
+
+          frame(a, {
+            i,
+            j: min,
+            line: 7,
+            sorted: Array.from({ length: i + 1 }, (_, k) => k),
+            comparisons,
+            moves,
+            title: 'Intercambiar elementos',
+            message: `El mínimo ${a[i]} queda colocado en la posición ${i + 1}.`,
+            note: 'Intercambiamos el mínimo con el elemento que ocupaba la siguiente posición disponible.'
+          });
+        }
+
+        frame(a, {
+          i,
+          line: 8,
+          sorted: Array.from({ length: i + 1 }, (_, k) => k),
+          comparisons,
+          moves,
+          title: 'Posición confirmada',
+          message: `La posición ${i + 1} queda confirmada.`,
+          note: 'La zona ordenada crece una posición.'
+        });
+      }
+
+      frame(a, {
+        line: 8,
+        sorted: a.map((_, i) => i),
+        comparisons,
+        moves,
+        title: '¡Array ordenado!',
+        message: 'Selection Sort ha terminado: el array está ordenado.',
+        note: 'Todos los elementos están en orden ascendente.'
+      });
+    }
+
+    /* ---------------- Insertion Sort ---------------- */
+
+    function buildInsertion() {
+      const a = original.slice();
+      let comparisons = 0;
+      let moves = 0;
+
+      frame(a, {
+        line: 0,
+        title: 'Estado inicial',
+        message: 'Insertion Sort inserta cada elemento en su lugar dentro de la parte izquierda ordenada.',
+        note: 'El primer elemento se considera una zona ordenada de un solo elemento.'
+      });
+
+      for (let i = 1; i < a.length; i++) {
+        const key = a[i];
+        let j = i - 1;
+
+        frame(a, {
+          i,
+          keyIndex: i,
+          line: 1,
+          sorted: Array.from({ length: i }, (_, k) => k),
+          comparisons,
+          moves,
+          title: `Seleccionar ${key}`,
+          message: `Guardamos ${key} como elemento activo que vamos a insertar.`,
+          note: 'El elemento azul es la clave que se está insertando en la zona ordenada.'
+        });
+
+        frame(a, {
+          i,
+          keyIndex: i,
+          line: 2,
+          sorted: Array.from({ length: i }, (_, k) => k),
+          comparisons,
+          moves,
+          title: 'Preparar la búsqueda',
+          message: 'Empezamos a comparar desde el elemento inmediatamente anterior.',
+          note: 'El índice j recorre la zona ordenada de derecha a izquierda.'
+        });
+
+        while (j >= 0) {
+          comparisons++;
+
+          frame(a, {
+            i: j,
+            j: i,
+            keyIndex: i,
+            line: 4,
+            sorted: Array.from({ length: i }, (_, k) => k),
+            comparisons,
+            moves,
+            title: 'Comparar con la clave',
+            message: `Comparamos ${a[j]} con la clave ${key}.`,
+            note: 'El elemento activo permanece identificado en azul; el elemento comparado se resalta en naranja.'
+          });
+
+          if (a[j] <= key) {
+            frame(a, {
+              i: j,
+              keyIndex: i,
+              line: 5,
+              sorted: Array.from({ length: i }, (_, k) => k),
+              comparisons,
+              moves,
+              title: 'Encontrar la posición',
+              message: `${a[j]} es menor o igual que ${key}. Hemos encontrado el lugar de inserción.`,
+              note: 'Ya no hace falta desplazar más elementos hacia la derecha.'
+            });
+            break;
+          }
+
+          a[j + 1] = a[j];
+          moves++;
+
+          frame(a, {
+            i: j,
+            j: j + 1,
+            keyIndex: j + 1,
+            line: 6,
+            sorted: Array.from({ length: i }, (_, k) => k),
+            comparisons,
+            moves,
+            title: 'Desplazar elemento',
+            message: `Desplazamos ${a[j]} una posición a la derecha.`,
+            note: 'El desplazamiento crea espacio para insertar la clave.'
+          });
+
+          j--;
+
+          frame(a, {
+            i: Math.max(0, j),
+            keyIndex: j + 1,
+            line: 7,
+            sorted: Array.from({ length: i }, (_, k) => k),
+            comparisons,
+            moves,
+            title: 'Retroceder una posición',
+            message: 'Continuamos la búsqueda hacia la izquierda.',
+            note: 'Repetimos el proceso hasta encontrar un elemento menor o llegar al inicio.'
+          });
+        }
+
+        a[j + 1] = key;
+
+        frame(a, {
+          i: j + 1,
+          keyIndex: j + 1,
+          line: 8,
+          sorted: Array.from({ length: i + 1 }, (_, k) => k),
+          comparisons,
+          moves,
+          title: `Insertar ${key}`,
+          message: `${key} queda insertado en la posición ${j + 2}.`,
+          note: 'La parte izquierda del array vuelve a estar ordenada.'
+        });
+      }
+
+      frame(a, {
+        line: 8,
+        sorted: a.map((_, i) => i),
+        comparisons,
+        moves,
+        title: '¡Array ordenado!',
+        message: 'Insertion Sort ha terminado: todos los elementos están ordenados.',
+        note: 'El array completo está en orden ascendente.'
+      });
+    }
+
+    /* ---------------- Renderizado ---------------- */
+
+    function renderPseudocode(activeLine, note) {
+      const config = pseudocode[algorithm];
+
+      codeTitle.textContent = config.title;
+      codeDescription.textContent = config.description;
+      codeBox.innerHTML = '';
+
+      config.lines.forEach((text, lineIndex) => {
+        const row = document.createElement('div');
+        row.className = 'sl-code-line';
+
+        if (lineIndex === activeLine) {
+          row.classList.add('active');
+          row.setAttribute('aria-current', 'step');
+        }
+
+        const number = document.createElement('span');
+        number.className = 'sl-line-number';
+        number.textContent = lineIndex + 1;
+
+        const content = document.createElement('span');
+        content.className = 'sl-line-text';
+        content.textContent = text;
+
+        row.appendChild(number);
+        row.appendChild(content);
+        codeBox.appendChild(row);
+      });
+
+      codeNote.textContent = note || 'Observa la línea resaltada para identificar la operación actual.';
+
+      const active = codeBox.querySelector('.active');
+
+      if (active) {
+        active.scrollIntoView({
+          block: 'nearest',
+          inline: 'nearest',
+          behavior: 'auto'
+        });
+      }
+    }
+
+    function render() {
+      const f = frames[index];
+      const n = f.arr.length;
+
+      bars.style.setProperty('--n', n);
+      positions.style.setProperty('--n', n);
+      bars.innerHTML = '';
+      positions.innerHTML = '';
+
+      const maxValue = Math.max(...original, 1);
+
+      f.arr.forEach((value, i) => {
+        const col = document.createElement('div');
+        col.className = 'sl-col';
+
+        const bar = document.createElement('div');
+        bar.className = 'sl-bar';
+        bar.style.height = `${Math.max(12, value / maxValue * 100)}%`;
+        bar.textContent = value;
+
+        /*
+          Prioridad de colores:
+          1. Posición confirmada: verde.
+          2. Elemento activo: azul.
+          3. Elemento comparado: naranja.
+        */
+
+        if (f.sorted.includes(i)) {
+          bar.classList.add('sorted');
+        } else if (
+          algorithm === 'insertion' &&
+          f.keyIndex === i
+        ) {
+          bar.classList.add('candidate');
+        } else if (f.i === i) {
+          bar.classList.add('candidate');
+        }
+
+        if (f.j === i && !f.sorted.includes(i)) {
+          bar.classList.remove('candidate');
+          bar.classList.add('comparing');
+        }
+
+        col.appendChild(bar);
+        bars.appendChild(col);
+
+        const pos = document.createElement('div');
+        pos.textContent = i + 1;
+        positions.appendChild(pos);
+      });
+
+      const names = {
+        bubble: 'Bubble Sort',
+        selection: 'Selection Sort',
+        insertion: 'Insertion Sort'
+      };
+
+      title.textContent = f.title;
+      details.textContent =
+        `${names[algorithm]} · ${f.sorted.length} de ${n} posiciones confirmadas`;
+
+      message.textContent = f.message;
+      stepLabel.textContent = `${index} / ${frames.length - 1}`;
+      comparisonsLabel.textContent = f.comparisons;
+      movesLabel.textContent = f.moves;
+
+      progress.style.width =
+        `${frames.length > 1 ? index / (frames.length - 1) * 100 : 100}%`;
+
+      prevBtn.disabled = index === 0;
+      nextBtn.disabled = index === frames.length - 1;
+
+      playBtn.textContent = timer
+        ? 'Ⅱ Pausar'
+        : index === frames.length - 1
+          ? '↻ Reproducir otra vez'
+          : '▶ Reproducir';
+
+      bars.setAttribute(
+        'aria-label',
+        `${f.title}. Array: ${f.arr.join(', ')}. ${f.message}`
+      );
+
+      renderPseudocode(f.line, f.note);
+    }
+
+    /* ---------------- Controles ---------------- */
+
+    function stop() {
+      if (timer) clearInterval(timer);
+      timer = null;
+    }
+
+    function advance() {
+      if (index < frames.length - 1) {
+        index++;
+      }
+
+      render();
+
+      if (index === frames.length - 1) {
+        stop();
+        render();
+      }
+    }
+
+    function play() {
+      if (timer) {
+        stop();
+        render();
+        return;
+      }
+
+      if (index >= frames.length - 1) {
+        index = 0;
+      }
+
+      const delays = [1800, 1250, 800, 480, 230];
+
+      timer = setInterval(
+        advance,
+        delays[Number(speedInput.value) - 1]
+      );
+
+      render();
+    }
+
+    function build() {
+      stop();
+      frames = [];
+      index = 0;
+
+      if (algorithm === 'bubble') {
+        buildBubble();
+      } else if (algorithm === 'selection') {
+        buildSelection();
+      } else {
+        buildInsertion();
+      }
+
+      render();
+    }
+
+    /* Seleccionar algoritmo */
+
+    root.querySelectorAll('[data-algo]').forEach(button => {
+      button.addEventListener('click', () => {
+        algorithm = button.dataset.algo;
+
+        root.querySelectorAll('[data-algo]').forEach(tab => {
+          tab.setAttribute(
+            'aria-selected',
+            String(tab === button)
+          );
+        });
+
+        build();
+      });
+    });
+
+    /* Paso anterior */
+
+    prevBtn.addEventListener('click', () => {
+      stop();
+      index = Math.max(0, index - 1);
+      render();
+    });
+
+    /* Paso siguiente */
+
+    nextBtn.addEventListener('click', () => {
+      stop();
+      advance();
+    });
+
+    /* Reproducción */
+
+    playBtn.addEventListener('click', play);
+
+    /* Reiniciar */
+
+    $('[data-reset]').addEventListener('click', build);
+
+    /* Aplicar números personalizados */
+
+    $('[data-apply]').addEventListener('click', () => {
+      const values = input.value.split(',').map(x => x.trim());
+      const parsed = values.map(Number);
+
+      if (
+        values.length < 2 ||
+        values.length > 16 ||
+        values.some(v => v === '') ||
+        parsed.some(v =>
+          !Number.isFinite(v) ||
+          !Number.isInteger(v) ||
+          v < 1 ||
+          v > 99
+        ) ||
+        new Set(parsed).size !== parsed.length
+      ) {
+        error.textContent =
+          'Introduce entre 2 y 16 números enteros distintos, del 1 al 99, separados por comas.';
+        return;
+      }
+
+      error.textContent = '';
+      original = parsed;
+      build();
+    });
+
+    /* Cambio de velocidad */
+
+    speedInput.addEventListener('input', () => {
+      if (timer) {
+        stop();
+        play();
+      }
+    });
+
+    /* Inicialización */
+
+    build();
+  })();
+  </script>
+</div>
