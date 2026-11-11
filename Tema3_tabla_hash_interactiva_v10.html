@@ -1,0 +1,1136 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simulador Didáctico de Tablas Hash - TPA</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React 18 & ReactDOM CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  
+  <!-- Babel Standalone para transpilar JSX en el navegador -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- Fuentes Google: Inter & Fira Code -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    .font-mono-code {
+      font-family: 'Fira Code', monospace;
+    }
+    /* Estilos de scrollbar personalizados para tema claro */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    @keyframes pulse-probing {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.04); }
+    }
+    .animate-probing {
+      animation: pulse-probing 0.7s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased overflow-hidden">
+  
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // Función auxiliar para formatear texto estilizando únicamente α, α_prox y α_máx (con =, valores y %)
+    const renderStyledText = (text) => {
+      if (!text) return null;
+      const regex = /(α_prox(?:\s*=\s*[\d.]+\%)?|α_máx(?:\s*=\s*[\d.]+\%)?|α_max(?:\s*=\s*[\d.]+\%)?|α(?:\s*=\s*[\d.]+\%)?)/g;
+
+      const parts = text.split(regex);
+      return parts.map((part, idx) => {
+        if (!part) return null;
+        if (part.startsWith('α_prox')) {
+          return <span key={idx} className="text-orange-600 font-bold">{part}</span>;
+        }
+        if (part.startsWith('α_máx') || part.startsWith('α_max')) {
+          return <span key={idx} className="text-red-600 font-bold">{part}</span>;
+        }
+        if (part.startsWith('α')) {
+          return <span key={idx} className="text-emerald-600 font-bold">{part}</span>;
+        }
+        return <span key={idx} className="text-slate-800">{part}</span>;
+      });
+    };
+
+    // --- FUNCIONES MATEMÁTICAS AUXILIARES ---
+    
+    // Comprueba si un entero n es primo
+    const isPrime = (n) => {
+      if (n <= 1) return false;
+      if (n <= 3) return true;
+      if (n % 2 === 0 || n % 3 === 0) return false;
+      for (let i = 5; i * i <= n; i += 6) {
+        if (n % i === 0 || n % (i + 2) === 0) return false;
+      }
+      return true;
+    };
+
+    // Siguiente número primo mayor o igual a x
+    const getNextPrime = (x) => {
+      let candidate = Math.max(2, Math.ceil(x));
+      while (!isPrime(candidate)) {
+        candidate++;
+      }
+      return candidate;
+    };
+
+    // --- COMPONENTE PRINCIPAL ---
+    function App() {
+      // 1. Configuración de Parámetros
+      const [initialN, setInitialN] = useState(7);
+      const [alphaMax, setAlphaMax] = useState(0.90);
+      const [method, setMethod] = useState('quadratic'); // 'linear', 'quadratic', 'double'
+      const [paramA, setParamA] = useState(5);
+      const [paramB, setParamB] = useState(5);
+      const [initialDataStr, setInitialDataStr] = useState('20, 50, 4, 23');
+      const [newElementInput, setNewElementInput] = useState('1');
+
+      // 2. Control de Animación y Pasos
+      const [steps, setSteps] = useState([]);
+      const [currentStepIdx, setCurrentStepIdx] = useState(0);
+      const [isPlaying, setIsPlaying] = useState(false);
+      const [speed, setSpeed] = useState(1);
+
+      // Estado de la tabla activa en memoria
+      const [activeTable, setActiveTable] = useState([]);
+      const [currentN, setCurrentN] = useState(7);
+
+      // 3. Control de Redimensión Dinámica de Paneles (70% - 30% por defecto)
+      const [leftWidth, setLeftWidth] = useState(70);
+      const [isDragging, setIsDragging] = useState(false);
+      const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024);
+      const containerRef = React.useRef(null);
+
+      useEffect(() => {
+        const handleResize = () => setIsDesktop(window.innerWidth >= 1024);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+      }, []);
+
+      const handleMouseDown = (e) => {
+        e.preventDefault();
+        setIsDragging(true);
+      };
+
+      useEffect(() => {
+        const handleMouseMove = (e) => {
+          if (!isDragging || !containerRef.current) return;
+          const rect = containerRef.current.getBoundingClientRect();
+          const clientX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+          const newLeftPercent = ((clientX - rect.left) / rect.width) * 100;
+          
+          // Limitar la proporción entre 20% y 80% para evitar colapsar los paneles
+          if (newLeftPercent >= 20 && newLeftPercent <= 80) {
+            setLeftWidth(newLeftPercent);
+          }
+        };
+
+        const handleMouseUp = () => {
+          if (isDragging) {
+            setIsDragging(false);
+          }
+        };
+
+        if (isDragging) {
+          window.addEventListener('mousemove', handleMouseMove);
+          window.addEventListener('mouseup', handleMouseUp);
+          window.addEventListener('touchmove', handleMouseMove);
+          window.addEventListener('touchend', handleMouseUp);
+        }
+
+        return () => {
+          window.removeEventListener('mousemove', handleMouseMove);
+          window.removeEventListener('mouseup', handleMouseUp);
+          window.removeEventListener('touchmove', handleMouseMove);
+          window.removeEventListener('touchend', handleMouseUp);
+        };
+      }, [isDragging]);
+
+      // --- INICIALIZAR O RESETEAR TABLA ---
+      const handleInitializeTable = () => {
+        setIsPlaying(false);
+        const parsedN = parseInt(initialN, 10) || 7;
+        const validN = Math.max(2, parsedN);
+        setCurrentN(validN);
+
+        let safeA = paramA;
+        let safeB = paramB;
+        if (safeB >= validN) safeB = Math.max(1, validN - 1);
+        if (safeA >= validN) safeA = Math.max(1, validN - 1);
+        setParamA(safeA);
+        setParamB(safeB);
+
+        let table = Array.from({ length: validN }, (_, i) => ({
+          index: i,
+          value: null,
+          status: 'empty'
+        }));
+
+        const rawItems = initialDataStr.split(',').map(s => s.trim()).filter(s => s !== '' && !isNaN(s));
+        const items = rawItems.map(Number);
+
+        items.forEach(key => {
+          let i = 0;
+          let inserted = false;
+          while (i < validN && !inserted) {
+            let idx = 0;
+            if (method === 'linear') {
+              idx = ((key % validN) + i) % validN;
+            } else if (method === 'quadratic') {
+              idx = ((key % validN) + (i * i)) % validN;
+            } else if (method === 'double') {
+              const h1 = key % validN;
+              const h2 = Math.max(1, safeA - (key % safeB));
+              idx = (h1 + i * h2) % validN;
+            }
+
+            // Si la celda está vacía o ya contiene el elemento (evitar duplicados en carga inicial)
+            if (table[idx].value === null) {
+              table[idx] = { index: idx, value: key, status: 'occupied' };
+              inserted = true;
+            } else if (table[idx].value === key) {
+              inserted = true; // Ya presente
+            } else {
+              i++;
+            }
+          }
+        });
+
+        setActiveTable(table);
+
+        const occupiedCount = table.filter(c => c.value !== null).length;
+        const currentAlpha = occupiedCount / validN;
+        
+        const initialStep = {
+          title: "Tabla Hash Inicializada",
+          description: `Tabla inicial creada con tamaño N = ${validN}.\nElementos cargados: n = ${occupiedCount}.\nFactor de carga actual α = ${(currentAlpha * 100).toFixed(0)}%.\nIngresa un número en "Dato X" y pulsa "Insertar" para trazar la operación.`,
+          currentN: validN,
+          secondaryN: null,
+          loadFactor: currentAlpha,
+          projectedLoadFactor: currentAlpha,
+          alphaMax: parseFloat(alphaMax),
+          mainTable: table.map(c => ({ ...c })),
+          secondaryTable: null,
+          probingData: null,
+          probeHistory: [],
+          rehashLog: null
+        };
+
+        setSteps([initialStep]);
+        setCurrentStepIdx(0);
+      };
+
+      useEffect(() => {
+        handleInitializeTable();
+      }, []);
+
+      // --- CÁLCULO DE HASH ---
+      const computeHash = (key, i, N, methodType, pA, pB) => {
+        const k = Math.abs(parseInt(key, 10));
+        if (methodType === 'linear') {
+          const base = k % N;
+          const finalIdx = (base + i) % N;
+          const formulaText = `H(${k}) = ((${k} mod ${N}) + ${i}) mod ${N}\n= (${base} + ${i}) mod ${N} = ${base + i} mod ${N} = ${finalIdx}`;
+          return { finalIdx, h1: base, h2: 1, formulaText };
+        } else if (methodType === 'quadratic') {
+          const base = k % N;
+          const iSq = i * i;
+          const finalIdx = (base + iSq) % N;
+          const formulaText = `H(${k}) = ((${k} mod ${N}) + ${i}²) mod ${N}\n= (${base} + ${iSq}) mod ${N} = ${base + iSq} mod ${N} = ${finalIdx}`;
+          return { finalIdx, h1: base, h2: null, formulaText };
+        } else {
+          const h1 = k % N;
+          const safeB = pB > 0 ? pB : 1;
+          const modB = k % safeB;
+          let h2 = pA - modB;
+          if (h2 <= 0) h2 = 1;
+          const stepVal = i * h2;
+          const finalIdx = (h1 + stepVal) % N;
+          const formulaText = `H1(${k}) = ${k} mod ${N} = ${h1}\nH2(${k}) = ${pA} - (${k} mod ${safeB}) = ${pA} - ${modB} = ${h2}\nH(${k}) = (${h1} + ${i} × ${h2}) mod ${N}\n= (${h1} + ${stepVal}) mod ${N} = ${h1 + stepVal} mod ${N} = ${finalIdx}`;
+          return { finalIdx, h1, h2, formulaText };
+        }
+      };
+
+      // --- INSERCIÓN Y TRAZA ---
+      const handleInsertElement = () => {
+        const valX = parseInt(newElementInput, 10);
+        if (isNaN(valX)) return;
+
+        // IMPORTANTE: NO iniciar la animación de Play automáticamente
+        setIsPlaying(false);
+        const newSteps = [];
+
+        let currentTable = activeTable.map(c => ({ ...c, status: c.value !== null ? 'occupied' : 'empty' }));
+        let N = currentN;
+        const occupiedCount = currentTable.filter(c => c.value !== null).length;
+        
+        // Comprobar si X ya existe en la tabla antes de evaluar redimensión
+        const alreadyExistsInCurrent = currentTable.some(c => c.value === valX);
+
+        const alphaCurrent = occupiedCount / N;
+        // Solo incrementará la ocupación si NO está duplicado
+        const alphaProj = alreadyExistsInCurrent ? alphaCurrent : (occupiedCount + 1) / N;
+        const targetAlphaMax = parseFloat(alphaMax);
+
+        // La redimensión se requiere únicamente si sobrepasa alfa_max y no era duplicado
+        const requiresRehash = !alreadyExistsInCurrent && (alphaProj > targetAlphaMax);
+
+        newSteps.push({
+          title: `Evaluación de Factor de Carga para X = ${valX}`,
+          description: `Factor de carga actual α = ${(alphaCurrent * 100).toFixed(1)}%.\nFactor próximo α_prox = ${(alphaProj * 100).toFixed(1)}%\n(Umbral α_máx = ${(targetAlphaMax * 100).toFixed(1)}%).\n${requiresRehash ? 'α_prox > α_máx.\n¡ATENCIÓN! Se inicia la REDIMENSIÓN y TRANSFERENCIA de datos.' : 'α_prox ≤ α_máx.\nProcediendo a insertar.'}`,
+          currentN: N,
+          secondaryN: null,
+          loadFactor: alphaCurrent,
+          projectedLoadFactor: alphaProj,
+          alphaMax: targetAlphaMax,
+          mainTable: currentTable.map(c => ({ ...c })),
+          secondaryTable: null,
+          probingData: null,
+          probeHistory: [],
+          rehashLog: null
+        });
+
+        // REDIMENSIÓN & TRANSFERENCIA (SI CORRESPONDE)
+        if (requiresRehash) {
+          const newN = getNextPrime(2 * N + 1);
+          
+          newSteps.push({
+            title: `Redimensión de Tabla: N' = siguiente_primo(2 * ${N}) = ${newN}`,
+            description: `Se crea una nueva tabla secundaria vacía de tamaño N' = ${newN}. Recorremos la tabla original (índices 0 a ${N - 1}) para transferir cada elemento existente.`,
+            currentN: N,
+            secondaryN: newN,
+            loadFactor: alphaCurrent,
+            projectedLoadFactor: alphaProj,
+            alphaMax: targetAlphaMax,
+            mainTable: currentTable.map(c => ({ ...c })),
+            secondaryTable: Array.from({ length: newN }, (_, idx) => ({ index: idx, value: null, status: 'empty' })),
+            probingData: null,
+            probeHistory: [],
+            rehashLog: { oldN: N, newN, reason: 'Superado el factor de carga máximo', transferredCount: 0 }
+          });
+
+          let secondaryTable = Array.from({ length: newN }, (_, idx) => ({ index: idx, value: null, status: 'empty' }));
+          let transferredCount = 0;
+
+          for (let oldIdx = 0; oldIdx < N; oldIdx++) {
+            const itemToTransfer = currentTable[oldIdx].value;
+
+            if (itemToTransfer !== null) {
+              currentTable[oldIdx].status = 'transferring';
+
+              newSteps.push({
+                title: `Transferencia: Leyendo [${oldIdx}] = ${itemToTransfer}`,
+                description: `Extrayendo el valor ${itemToTransfer} de la celda [${oldIdx}] de la tabla original para re-insertarlo en la nueva tabla (N' = ${newN}).`,
+                currentN: N,
+                secondaryN: newN,
+                loadFactor: alphaCurrent,
+                projectedLoadFactor: alphaProj,
+                alphaMax: targetAlphaMax,
+                mainTable: currentTable.map(c => ({ ...c })),
+                secondaryTable: secondaryTable.map(c => ({ ...c })),
+                probingData: null,
+                probeHistory: [],
+                rehashLog: { oldN: N, newN, reason: 'Transferencia en curso...', transferredCount }
+              });
+
+              let i = 0;
+              let placed = false;
+              let transferProbes = [];
+
+              while (i < newN && !placed) {
+                const probeRes = computeHash(itemToTransfer, i, newN, method, paramA, paramB);
+                const targetIdx = probeRes.finalIdx;
+
+                if (secondaryTable[targetIdx].value === null) {
+                  secondaryTable[targetIdx] = { index: targetIdx, value: itemToTransfer, status: 'transferred' };
+                  currentTable[oldIdx] = { index: oldIdx, value: itemToTransfer, status: 'transferred' };
+                  transferredCount++;
+                  placed = true;
+                  transferProbes.push({ i, targetIdx, outcome: 'Libre (Transferido)' });
+
+                  newSteps.push({
+                    title: `Transferencia: ${itemToTransfer} → [${targetIdx}] en nueva tabla`,
+                    description: `El elemento ${itemToTransfer} se ha transferido con éxito a la posición [${targetIdx}] de la nueva tabla (N' = ${newN}) en el intento i = ${i}.`,
+                    currentN: N,
+                    secondaryN: newN,
+                    loadFactor: alphaCurrent,
+                    projectedLoadFactor: alphaProj,
+                    alphaMax: targetAlphaMax,
+                    mainTable: currentTable.map(c => ({ ...c })),
+                    secondaryTable: secondaryTable.map(c => ({ ...c })),
+                    probingData: { key: itemToTransfer, i, h1: probeRes.h1, h2: probeRes.h2, formulaText: probeRes.formulaText, finalIndex: targetIdx },
+                    probeHistory: [...transferProbes],
+                    rehashLog: { oldN: N, newN, reason: 'Transferencia en curso...', transferredCount }
+                  });
+                } else {
+                  transferProbes.push({ i, targetIdx, outcome: `Colisión con ${secondaryTable[targetIdx].value}` });
+                  secondaryTable[targetIdx].status = 'collision';
+
+                  newSteps.push({
+                    title: `Colisión en Transferencia: ${itemToTransfer} en [${targetIdx}]`,
+                    description: `Colisión en el intento i = ${i} para ${itemToTransfer} en la nueva tabla. Se prueba el siguiente intento i = ${i + 1}.`,
+                    currentN: N,
+                    secondaryN: newN,
+                    loadFactor: alphaCurrent,
+                    projectedLoadFactor: alphaProj,
+                    alphaMax: targetAlphaMax,
+                    mainTable: currentTable.map(c => ({ ...c })),
+                    secondaryTable: secondaryTable.map(c => ({ ...c })),
+                    probingData: { key: itemToTransfer, i, h1: probeRes.h1, h2: probeRes.h2, formulaText: probeRes.formulaText, finalIndex: targetIdx },
+                    probeHistory: [...transferProbes],
+                    rehashLog: { oldN: N, newN, reason: 'Transferencia en curso...', transferredCount }
+                  });
+                  i++;
+                }
+              }
+            }
+          }
+
+          N = newN;
+          currentTable = secondaryTable.map(c => ({ ...c, status: c.value !== null ? 'occupied' : 'empty' }));
+          const alphaPostRehash = transferredCount / N;
+          const alphaProjPostRehash = (transferredCount + 1) / N;
+
+          newSteps.push({
+            title: `Transferencia Completada. Nuevo N = ${N}`,
+            description: `Se han transferido exitosamente ${transferredCount} elementos. La nueva tabla de tamaño N = ${N} se establece como tabla principal. Procediendo a insertar el dato X = ${valX}.`,
+            currentN: N,
+            secondaryN: null,
+            loadFactor: alphaPostRehash,
+            projectedLoadFactor: alphaProjPostRehash,
+            alphaMax: targetAlphaMax,
+            mainTable: currentTable.map(c => ({ ...c })),
+            secondaryTable: null,
+            probingData: null,
+            probeHistory: [],
+            rehashLog: { oldN: currentN, newN: N, reason: 'Redimensión finalizada', transferredCount }
+          });
+        }
+
+        // INSERCIÓN DEL NUEVO ELEMENTO X (CON CONTROL DE DUPLICADOS Y LÍMITES)
+        let i = 0;
+        let insertedX = false;
+        let isDuplicate = false;
+        let probeHistoryX = [];
+
+        while (i < N && !insertedX && !isDuplicate) {
+          const probeRes = computeHash(valX, i, N, method, paramA, paramB);
+          const targetIdx = probeRes.finalIdx;
+          const cell = currentTable[targetIdx];
+
+          // 1. CASO DATO DUPLICADO DETECTADO
+          if (cell.value === valX) {
+            isDuplicate = true;
+            currentTable[targetIdx].status = 'duplicate';
+            probeHistoryX.push({ i, targetIdx, outcome: `¡Duplicado! (${valX})` });
+
+            const finalCount = currentTable.filter(c => c.value !== null).length;
+            const finalAlpha = finalCount / N;
+
+            newSteps.push({
+              title: `Dato Duplicado: X = ${valX} ya existe`,
+              description: `En el intento i = ${i}, al calcular la posición [${targetIdx}], se comprueba que contiene el valor ${valX}.\n\nREGLA: Si un elemento ya existe en la tabla, la búsqueda finaliza en su posición. No se inserta repetido ni se incrementa la ocupación.`,
+              currentN: N,
+              secondaryN: null,
+              loadFactor: finalAlpha,
+              projectedLoadFactor: finalAlpha,
+              alphaMax: targetAlphaMax,
+              mainTable: currentTable.map(c => ({ ...c })),
+              secondaryTable: null,
+              probingData: { key: valX, i, h1: probeRes.h1, h2: probeRes.h2, formulaText: probeRes.formulaText, finalIndex: targetIdx },
+              probeHistory: [...probeHistoryX],
+              rehashLog: null
+            });
+          }
+          // 2. CASO HUECO LIBRE ENCONTRADO
+          else if (cell.value === null) {
+            currentTable[targetIdx] = { index: targetIdx, value: valX, status: 'success' };
+            insertedX = true;
+            probeHistoryX.push({ i, targetIdx, outcome: '¡ÉXITO! Hueco libre' });
+
+            const finalCount = currentTable.filter(c => c.value !== null).length;
+            const finalAlpha = finalCount / N;
+
+            newSteps.push({
+              title: `¡Éxito! Inserción de X = ${valX} en [${targetIdx}]`,
+              description: `En el intento i = ${i}, la posición [${targetIdx}] está vacía. Se almacena el dato ${valX}.\nNuevo factor de carga de la tabla: α = ${(finalAlpha * 100).toFixed(1)}%.`,
+              currentN: N,
+              secondaryN: null,
+              loadFactor: finalAlpha,
+              projectedLoadFactor: finalAlpha,
+              alphaMax: targetAlphaMax,
+              mainTable: currentTable.map(c => ({ ...c })),
+              secondaryTable: null,
+              probingData: { key: valX, i, h1: probeRes.h1, h2: probeRes.h2, formulaText: probeRes.formulaText, finalIndex: targetIdx },
+              probeHistory: [...probeHistoryX],
+              rehashLog: null
+            });
+          } 
+          // 3. CASO COLISIÓN CON OTRO DATO DISTINTO
+          else {
+            probeHistoryX.push({ i, targetIdx, outcome: `Colisión con ${cell.value}` });
+            currentTable[targetIdx].status = 'collision';
+
+            newSteps.push({
+              title: `Colisión al insertar X = ${valX} en [${targetIdx}]`,
+              description: `En el intento i = ${i}, la posición [${targetIdx}] está ocupada por el valor ${cell.value}. Se incrementa el contador de colisiones i = ${i + 1}.`,
+              currentN: N,
+              secondaryN: null,
+              loadFactor: (currentTable.filter(c => c.value !== null).length + 1) / N,
+              projectedLoadFactor: (currentTable.filter(c => c.value !== null).length + 1) / N,
+              alphaMax: targetAlphaMax,
+              mainTable: currentTable.map(c => ({ ...c })),
+              secondaryTable: null,
+              probingData: { key: valX, i, h1: probeRes.h1, h2: probeRes.h2, formulaText: probeRes.formulaText, finalIndex: targetIdx },
+              probeHistory: [...probeHistoryX],
+              rehashLog: null
+            });
+
+            currentTable[targetIdx].status = 'occupied';
+            i++;
+          }
+        }
+
+        // Si se recorrieron todos los intentos i de 0 a N-1 sin éxito ni duplicado
+        if (!insertedX && !isDuplicate) {
+          newSteps.push({
+            title: `Límite de Exploración Alcanzado (i = ${N})`,
+            description: `Se han realizado ${N} intentos sin encontrar una posición libre ni el valor duplicado.\nEsto sucede si la secuencia de exploración de colisiones se repite en ciclo. No se ha modificado la tabla.`,
+            isLimitReached: true,
+            currentN: N,
+            secondaryN: null,
+            loadFactor: currentTable.filter(c => c.value !== null).length / N,
+            projectedLoadFactor: currentTable.filter(c => c.value !== null).length / N,
+            alphaMax: targetAlphaMax,
+            mainTable: currentTable.map(c => ({ ...c, status: c.value !== null ? 'occupied' : 'empty' })),
+            secondaryTable: null,
+            probingData: null,
+            probeHistory: [...probeHistoryX],
+            rehashLog: null
+          });
+        }
+
+        setActiveTable(currentTable.map(c => ({ ...c, status: c.value !== null ? 'occupied' : 'empty' })));
+        setCurrentN(N);
+        setSteps(newSteps);
+        setCurrentStepIdx(0); // Colocar al usuario en el inicio del proceso para que decida darle a PLAY o avanzar paso a paso
+      };
+
+      // --- TEMPORIZADOR PLAY ---
+      useEffect(() => {
+        let timer = null;
+        if (isPlaying) {
+          timer = setInterval(() => {
+            setCurrentStepIdx(prevIdx => {
+              if (prevIdx < steps.length - 1) {
+                return prevIdx + 1;
+              } else {
+                setIsPlaying(false);
+                return prevIdx;
+              }
+            });
+          }, 1600 / speed);
+        }
+        return () => { if (timer) clearInterval(timer); };
+      }, [isPlaying, steps.length, speed]);
+
+      const currentStep = steps[currentStepIdx] || {
+        title: "Esperando inserción",
+        description: "Configura la tabla e inserta un elemento.",
+        currentN: currentN,
+        secondaryN: null,
+        loadFactor: 0,
+        projectedLoadFactor: 0,
+        alphaMax: parseFloat(alphaMax),
+        mainTable: activeTable,
+        secondaryTable: null,
+        probingData: null,
+        probeHistory: [],
+        rehashLog: null
+      };
+
+      const percentageCurrent = (currentStep.loadFactor * 100).toFixed(0);
+      const percentageProj = (currentStep.projectedLoadFactor * 100).toFixed(0);
+
+      return (
+        <div className="min-h-screen lg:h-screen w-full flex flex-col bg-slate-100 text-slate-800 p-2.5 sm:p-4 gap-3 overflow-y-auto lg:overflow-hidden">
+          
+          {/* ================= SECCIÓN SUPERIOR ================= */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 shrink-0">
+            
+            {/* ARRIBA IZQUIERDA: CONFIGURACIÓN DE LA TABLA HASH */}
+            <div className="lg:col-span-6 xl:col-span-7 bg-white border border-slate-300 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+              
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2 mb-2.5">
+                <h2 className="text-base font-bold text-slate-900 tracking-wide flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-blue-600"></span>
+                  Configuración de la tabla hash
+                </h2>
+                <span className="text-xs text-slate-600 font-mono-code">
+                  N actual = <strong className="text-blue-700 font-bold">{currentStep.currentN}</strong>
+                </span>
+              </div>
+
+              {/* Fila 1: Campos básicos */}
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-3 items-center text-sm">
+                
+                {/* Tamaño N */}
+                <div className="sm:col-span-3 flex items-center gap-1.5">
+                  <label className="text-slate-700 font-medium whitespace-nowrap">Tamaño N:</label>
+                  <input
+                    type="number"
+                    min="2"
+                    max="97"
+                    value={initialN}
+                    onChange={(e) => setInitialN(parseInt(e.target.value, 10) || 2)}
+                    className="w-16 bg-slate-50 border border-slate-300 rounded px-2 py-1 text-sm text-slate-900 font-mono-code focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* Alfa Max */}
+                <div className="sm:col-span-3 flex items-center gap-1.5">
+                  <label className="text-slate-700 font-medium whitespace-nowrap">α_max:</label>
+                  <input
+                    type="number"
+                    step="0.05"
+                    min="0.2"
+                    max="0.95"
+                    value={alphaMax}
+                    onChange={(e) => setAlphaMax(parseFloat(e.target.value) || 0.7)}
+                    className="w-16 bg-slate-50 border border-slate-300 rounded px-2 py-1 text-sm text-slate-900 font-mono-code focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* Datos Iniciales */}
+                <div className="sm:col-span-6 flex items-center gap-1.5">
+                  <label className="text-slate-700 font-medium whitespace-nowrap">Datos iniciales:</label>
+                  <input
+                    type="text"
+                    value={initialDataStr}
+                    onChange={(e) => setInitialDataStr(e.target.value)}
+                    placeholder="20, 50, 4, 23"
+                    className="flex-1 bg-slate-50 border border-slate-300 rounded px-2.5 py-1 text-sm text-slate-900 font-mono-code focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+
+              </div>
+
+              {/* Fila 2: Desplegable de Colisiones y Botones generales */}
+              <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 text-sm mt-3">
+                
+                {/* Desplegable de Colisiones */}
+                <div className="flex items-center gap-2 flex-1 min-w-[250px]">
+                  <label className="text-slate-700 font-medium whitespace-nowrap">Colisiones (desplegable):</label>
+                  <select
+                    value={method}
+                    onChange={(e) => setMethod(e.target.value)}
+                    className="flex-1 bg-slate-50 border border-blue-400 rounded px-2.5 py-1.5 text-sm text-blue-900 font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                  >
+                    <option value="linear">* Exploración Lineal</option>
+                    <option value="quadratic">* Exploración Cuadrática</option>
+                    <option value="double">* Doble Hashing (H1 + i*H2)</option>
+                  </select>
+                </div>
+
+                {/* Botones Crear / Reset */}
+                <div className="flex gap-1.5 shrink-0">
+                  <button
+                    onClick={handleInitializeTable}
+                    className="px-3.5 py-1.5 rounded-lg bg-slate-600 hover:bg-slate-700 text-white font-bold text-sm shadow-sm transition-all"
+                  >
+                    Crear / Reset
+                  </button>
+                </div>
+
+              </div>
+
+              {/* Sub-panel desplegado en caso de Doble Hashing */}
+              {method === 'double' && (
+                <div className="mt-2.5 p-2.5 bg-blue-50/70 rounded-lg border border-blue-200 flex flex-wrap items-center justify-between text-xs font-mono-code gap-2">
+                  <span className="text-blue-900 font-medium">
+                    * H1(k) = k mod N &nbsp;|&nbsp; * H2(k) = A - (k mod B)
+                  </span>
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-1 text-slate-700">
+                      * A =
+                      <input
+                        type="number"
+                        min="1"
+                        max={currentN - 1}
+                        value={paramA}
+                        onChange={(e) => setParamA(parseInt(e.target.value, 10) || 1)}
+                        className="w-12 bg-white border border-slate-300 rounded px-1 text-slate-900 text-center"
+                      />
+                    </label>
+                    <label className="flex items-center gap-1 text-slate-700">
+                      * B =
+                      <input
+                        type="number"
+                        min="1"
+                        max={currentN - 1}
+                        value={paramB}
+                        onChange={(e) => setParamB(parseInt(e.target.value, 10) || 1)}
+                        className="w-12 bg-white border border-slate-300 rounded px-1 text-slate-900 text-center"
+                      />
+                    </label>
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+            {/* ARRIBA DERECHA: ESTADO DE LA TABLA + BOTONERA CON DATO X */}
+            <div className="lg:col-span-6 xl:col-span-5 flex flex-col gap-2.5">
+              
+              {/* Bloque Superior Derecha: Estado de la Tabla */}
+              <div className="bg-white border border-slate-300 rounded-xl p-3.5 shadow-sm flex flex-col justify-between">
+                <div className="flex justify-between items-center mb-1.5">
+                  <h3 className="text-sm font-bold text-slate-800 tracking-wide uppercase">
+                    Estado de la tabla
+                  </h3>
+                  <div className="text-xs font-mono-code flex items-center gap-2">
+                    <span className="text-emerald-600 font-bold">α = {percentageCurrent}%</span>
+                    {currentStep.projectedLoadFactor > currentStep.loadFactor && (
+                      <span className="text-orange-600 font-bold">→ Prox: {percentageProj}%</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Barra Estilo Wireframe Blanco (Relleno verde y marca roja α_max) */}
+                <div className="relative h-7.5 bg-slate-100 rounded-lg border border-slate-300 overflow-hidden flex items-center">
+                  
+                  {/* Relleno Ocupación Actual */}
+                  <div
+                    className="h-full bg-emerald-500 flex items-center justify-center text-sm font-black text-white font-mono-code transition-all duration-300 shadow-inner"
+                    style={{ width: `${Math.min(100, currentStep.loadFactor * 100)}%` }}
+                  >
+                    {percentageCurrent > 5 ? `${percentageCurrent}%` : ''}
+                  </div>
+
+                  {/* Sombreado Proyectado */}
+                  {currentStep.projectedLoadFactor > currentStep.loadFactor && (
+                    <div
+                      className={`h-full transition-all duration-300 ${currentStep.projectedLoadFactor > currentStep.alphaMax ? 'bg-rose-400 animate-pulse' : 'bg-amber-300'}`}
+                      style={{ width: `${Math.min(100, (currentStep.projectedLoadFactor - currentStep.loadFactor) * 100)}%` }}
+                    />
+                  )}
+
+                  {/* Marca Roja Vertical de α_max */}
+                  <div
+                    className="absolute top-0 bottom-0 w-1 bg-red-600 z-10 shadow-md"
+                    style={{ left: `${Math.min(100, currentStep.alphaMax * 100)}%` }}
+                    title={`α_máx = ${currentStep.alphaMax.toFixed(2)}`}
+                  />
+                </div>
+              </div>
+
+              {/* Bloque Inferior Derecha: Botonera con DATO X integrado */}
+              <div className="bg-white border border-slate-300 rounded-xl p-3 shadow-sm flex flex-wrap items-center justify-between gap-2">
+                
+                {/* WIDGET DE INSERCIÓN */}
+                <div className="flex items-center gap-1.5 pr-2.5 border-r border-slate-200">
+                  <label className="text-emerald-800 font-bold whitespace-nowrap text-sm">Dato X:</label>
+                  <input
+                    type="number"
+                    value={newElementInput}
+                    onChange={(e) => setNewElementInput(e.target.value)}
+                    className="w-16 bg-emerald-50 border border-emerald-400 rounded px-2 py-1 text-sm text-emerald-950 font-mono-code font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                  <button
+                    onClick={handleInsertElement}
+                    className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-sm transition-all flex items-center gap-1 shrink-0"
+                  >
+                    Insertar
+                  </button>
+                </div>
+
+                {/* BOTONES DE CONTROL */}
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => { setIsPlaying(false); setCurrentStepIdx(0); }}
+                    disabled={currentStepIdx === 0}
+                    className="px-2.5 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-900 font-bold text-sm disabled:opacity-40 transition-all border border-blue-300"
+                    title="Ir al inicio"
+                  >
+                    │◄
+                  </button>
+                  <button
+                    onClick={() => { setIsPlaying(false); setCurrentStepIdx(prev => Math.max(0, prev - 1)); }}
+                    disabled={currentStepIdx === 0}
+                    className="px-2.5 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-900 font-bold text-sm disabled:opacity-40 transition-all border border-blue-300"
+                    title="Paso anterior"
+                  >
+                    ◄
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      if (currentStepIdx >= steps.length - 1) setCurrentStepIdx(0);
+                      setIsPlaying(!isPlaying);
+                    }}
+                    className={`px-3.5 py-1 rounded-lg font-bold text-sm shadow-sm transition-all flex items-center gap-1 ${isPlaying ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+                  >
+                    {isPlaying ? 'PAUSA ❚❚' : 'PLAY ►'}
+                  </button>
+
+                  <button
+                    onClick={() => { setIsPlaying(false); setCurrentStepIdx(prev => Math.min(steps.length - 1, prev + 1)); }}
+                    disabled={currentStepIdx >= steps.length - 1}
+                    className="px-2.5 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-900 font-bold text-sm disabled:opacity-40 transition-all border border-blue-300"
+                    title="Siguiente paso"
+                  >
+                    ►
+                  </button>
+                  <button
+                    onClick={() => { setIsPlaying(false); setCurrentStepIdx(steps.length - 1); }}
+                    disabled={currentStepIdx >= steps.length - 1}
+                    className="px-2.5 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-900 font-bold text-sm disabled:opacity-40 transition-all border border-blue-300"
+                    title="Ir al final"
+                  >
+                    ►│
+                  </button>
+                </div>
+
+                {/* Contador de Pasos y Selector Velocidad */}
+                <div className="flex items-center gap-2 ml-auto">
+                  <span className="text-sm font-mono-code text-slate-600 font-semibold">
+                    {currentStepIdx + 1}/{steps.length || 1}
+                  </span>
+                  <div className="flex bg-slate-100 p-0.5 rounded border border-slate-300">
+                    {[0.5, 1, 2].map(s => (
+                      <button
+                        key={s}
+                        onClick={() => setSpeed(s)}
+                        className={`px-1.5 py-0.5 rounded text-xs font-mono-code font-bold ${speed === s ? 'bg-blue-600 text-white' : 'text-slate-600'}`}
+                      >
+                        {s}x
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+
+          {/* ================= SECCIÓN INFERIOR ================= */}
+          <div 
+            ref={containerRef}
+            className={`flex flex-col lg:flex-row flex-1 overflow-visible lg:overflow-hidden min-h-0 ${isDragging ? 'select-none cursor-col-resize' : ''}`}
+          >
+            
+            {/* ESQUEMA DE TABLAS (PANEL IZQUIERDO - 70% POR DEFECTO Y AJUSTABLE) */}
+            <div 
+              className="w-full bg-white border border-slate-300 rounded-xl p-4 shadow-sm flex flex-col gap-4 overflow-y-auto min-w-0"
+              style={isDesktop ? { width: `${leftWidth}%` } : {}}
+            >
+              
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                <h3 className="text-base font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+                  Esquema de tablas
+                </h3>
+                <span className="text-sm font-mono-code text-blue-700 font-bold">N = {currentStep.currentN}</span>
+              </div>
+
+              {/* TABLA PRINCIPAL DE TAMAÑO N */}
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-semibold text-slate-500">Tabla Hash Principal:</span>
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(105px,1fr))] gap-3">
+                  {currentStep.mainTable.map((cell) => {
+                    let styleClasses = "bg-slate-50 border-slate-200 text-slate-400";
+                    let statusLabel = "Vacío";
+                    let badgeColor = "bg-slate-200 text-slate-600";
+
+                    if (cell.status === 'occupied') {
+                      styleClasses = "bg-white border-slate-300 text-slate-800 shadow-sm";
+                      statusLabel = "Ocupado";
+                      badgeColor = "bg-slate-100 text-slate-700 border border-slate-200";
+                    } else if (cell.status === 'probing') {
+                      styleClasses = "bg-amber-50 border-amber-400 text-amber-900 animate-probing font-bold scale-105 shadow-md";
+                      statusLabel = "Probando...";
+                      badgeColor = "bg-amber-400 text-amber-950 font-bold";
+                    } else if (cell.status === 'collision') {
+                      styleClasses = "bg-rose-50 border-rose-400 text-rose-900 animate-probing font-bold scale-105 shadow-md";
+                      statusLabel = "Colisión";
+                      badgeColor = "bg-rose-500 text-white font-bold";
+                    } else if (cell.status === 'duplicate') {
+                      styleClasses = "bg-sky-50 border-sky-500 text-sky-900 font-bold scale-105 shadow-md";
+                      statusLabel = "¡Duplicado!";
+                      badgeColor = "bg-sky-500 text-white font-bold";
+                    } else if (cell.status === 'success') {
+                      styleClasses = "bg-emerald-50 border-emerald-500 text-emerald-900 font-bold scale-105 shadow-md";
+                      statusLabel = "¡Éxito!";
+                      badgeColor = "bg-emerald-500 text-white font-bold";
+                    } else if (cell.status === 'transferring') {
+                      styleClasses = "bg-purple-50 border-purple-400 text-purple-900 animate-probing font-bold";
+                      statusLabel = "Transfiriendo";
+                      badgeColor = "bg-purple-600 text-white font-bold";
+                    } else if (cell.status === 'transferred') {
+                      styleClasses = "bg-slate-50 border-slate-200 text-slate-400 opacity-60";
+                      statusLabel = "Transferido";
+                      badgeColor = "bg-slate-200 text-slate-600";
+                    }
+
+                    return (
+                      <div
+                        key={cell.index}
+                        className={`relative rounded-xl border p-2.5 flex flex-col items-center justify-between min-h-[84px] min-w-[90px] transition-all ${styleClasses}`}
+                      >
+                        {/* 1. ÍNDICE SOLITARIO ARRIBA A LA IZQUIERDA */}
+                        <div className="w-full flex justify-start items-center text-xs font-mono-code">
+                          <span className="font-bold opacity-75">[{cell.index}]</span>
+                        </div>
+                        
+                        {/* 2. DATO CENTRADO EN EL MEDIO */}
+                        <div className="text-xl font-bold font-mono-code my-1">
+                          {cell.value !== null ? cell.value : '-'}
+                        </div>
+                        
+                        {/* 3. ETIQUETA DE ESTADO ABAJO AL PIE (CENTRADA Y ANCHA) */}
+                        <div className="w-full flex justify-center items-center">
+                          <span className={`px-0 py-0.5 rounded text-xs sm:text-sm font-semibold tracking-tight text-center w-full truncate ${badgeColor}`}>
+                            {statusLabel}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* TABLA SECUNDARIA N' SI HAY REDIMENSIÓN */}
+              {currentStep.secondaryTable && (
+                <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-purple-200">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-semibold text-purple-900">Nueva Tabla Secundaria (N' = {currentStep.secondaryN}):</span>
+                    <span className="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded border border-purple-300 font-bold">Redimensión Activa</span>
+                  </div>
+
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(105px,1fr))] gap-3">
+                    {currentStep.secondaryTable.map((cell) => {
+                      let styleClasses = "bg-slate-50 border-slate-200 text-slate-400";
+                      let statusLabel = "Vacío";
+                      let badgeColor = "bg-purple-100 text-purple-800 border border-purple-300 font-bold";
+
+                      if (cell.status === 'transferred') {
+                        styleClasses = "bg-purple-50 border-purple-400 text-purple-900 shadow-sm font-bold";
+                        statusLabel = "Transferido";
+                        badgeColor = "bg-purple-600 text-white font-bold";
+                      } else if (cell.status === 'collision') {
+                        styleClasses = "bg-rose-50 border-rose-400 text-rose-900 animate-probing";
+                        statusLabel = "Colisión";
+                        badgeColor = "bg-rose-500 text-white font-bold";
+                      }
+
+                      return (
+                        <div
+                          key={cell.index}
+                          className={`relative rounded-xl border p-2.5 flex flex-col items-center justify-between min-h-[84px] min-w-[90px] transition-all ${styleClasses}`}
+                        >
+                          {/* 1. ÍNDICE SOLITARIO ARRIBA */}
+                          <div className="w-full flex justify-start items-center text-xs font-mono-code">
+                            <span className="opacity-75 font-bold">[{cell.index}]</span>
+                          </div>
+                          
+                          {/* 2. DATO EN EL MEDIO */}
+                          <div className="text-xl font-bold font-mono-code my-1">
+                            {cell.value !== null ? cell.value : '-'}
+                          </div>
+
+                          {/* 3. ETIQUETA ABAJO CENTRADA */}
+                          <div className="w-full flex justify-center items-center">
+                            <span className={`px-2 py-0.5 rounded text-xs sm:text-sm font-semibold tracking-tight text-center w-full truncate ${badgeColor}`}>
+                              {statusLabel}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+            {/* BARRA DE SEPARACIÓN ARRASTRABLE (RESIZER) */}
+            <div
+              onMouseDown={handleMouseDown}
+              onTouchStart={handleMouseDown}
+              className="hidden lg:flex w-3 items-center justify-center cursor-col-resize group shrink-0 px-0.5 select-none"
+              title="Haz clic y arrastra para ajustar el ancho de los paneles"
+            >
+              <div className={`w-1.5 h-16 rounded-full transition-colors ${isDragging ? 'bg-blue-600 shadow-md' : 'bg-slate-300 group-hover:bg-blue-500'}`} />
+            </div>
+
+            {/* OPERACIONES (PANEL DERECHO - 30% POR DEFECTO Y AJUSTABLE) */}
+            <div 
+              className="w-full bg-white border border-slate-300 rounded-xl p-3 shadow-sm flex flex-col gap-3 overflow-y-auto min-w-0"
+              style={isDesktop ? { width: `calc(${100 - leftWidth}% - 0.75rem)` } : {}}
+            >
+              
+              {/* CABECERA DE OPERACIONES + FUNCIÓN HASH APLICADA CENTRADA */}
+              <div className="border-b border-slate-200 pb-2 flex flex-col items-center gap-1.5 text-center">
+                <h3 className="text-sm sm:text-base font-bold text-slate-900 uppercase tracking-wider flex items-center justify-center gap-1.5">
+                  <svg className="w-4 h-4 text-amber-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                  Operaciones
+                </h3>
+                
+                {/* FUNCIÓN HASH CENTRADA Y DESTACADA */}
+                <div className="bg-slate-100 border border-slate-300 rounded-md px-2 py-1 text-xs font-mono-code text-slate-800 shadow-inner w-full font-semibold break-words leading-tight">
+                  {method === 'linear' && `H(k) = ((k mod N) + i) mod N`}
+                  {method === 'quadratic' && `H(k) = ((k mod N) + i²) mod N`}
+                  {method === 'double' && `H(k) = (H1(k) + i × H2(k)) mod N\nH1 = k mod N, H2 = ${paramA} - (k mod ${paramB})`}
+                </div>
+              </div>
+
+              {/* 1. EXPLICACIÓN DEL PASO */}
+              <div className={`p-2.5 rounded-lg border flex flex-col gap-1 transition-all ${
+                currentStep.isLimitReached || currentStep.title.includes('Límite')
+                  ? 'bg-rose-50 border-rose-400 text-rose-950 ring-2 ring-rose-300 shadow-md'
+                  : 'bg-slate-50 border-slate-200 text-slate-800'
+              }`}>
+                <div className="flex items-center gap-1.5">
+                  {(currentStep.isLimitReached || currentStep.title.includes('Límite')) && (
+                    <span className="text-lg">⚠️</span>
+                  )}
+                  <span className={`text-sm font-bold ${
+                    currentStep.isLimitReached || currentStep.title.includes('Límite')
+                      ? 'text-rose-700 font-extrabold text-base'
+                      : 'text-blue-900'
+                  }`}>
+                    {currentStep.title}
+                  </span>
+                </div>
+                <div className={`text-xs sm:text-sm leading-relaxed font-medium flex flex-col gap-0.5 ${
+                  currentStep.isLimitReached || currentStep.title.includes('Límite')
+                    ? 'text-rose-950 font-semibold'
+                    : 'text-slate-800'
+                }`}>
+                  {currentStep.description.split('\n').map((line, lIdx) => (
+                    <div key={lIdx}>
+                      {renderStyledText(line)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 2. DESGLOSE MATEMÁTICO */}
+              <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 flex flex-col gap-1.5">
+                <span className="text-xs sm:text-sm font-bold text-slate-900">Fórmulas aplicadas:</span>
+                
+                {currentStep.probingData ? (
+                  <div className="flex flex-col gap-1.5 text-xs sm:text-sm font-mono-code">
+                    <div className="grid grid-cols-1 gap-1 bg-white p-2 rounded border border-slate-200 shadow-sm">
+                      <div>k: <strong className="text-slate-900">{currentStep.probingData.key}</strong> | i: <strong className="text-amber-700 font-bold">{currentStep.probingData.i}</strong></div>
+                      <div>H1(k): <strong className="text-emerald-700 font-bold">{currentStep.probingData.h1}</strong></div>
+                      {method === 'double' && (
+                        <div>H2(k): <strong className="text-blue-700 font-bold">{currentStep.probingData.h2}</strong></div>
+                      )}
+                    </div>
+                    <div className="bg-white p-2 rounded border border-slate-200 text-blue-900 font-bold whitespace-pre-line shadow-sm text-xs break-words">
+                      {currentStep.probingData.formulaText}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 italic">Sin cálculo activo.</p>
+                )}
+              </div>
+
+              {/* 3. HISTORIAL DE INTENTOS */}
+              <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 flex flex-col gap-1.5">
+                <span className="text-xs sm:text-sm font-bold text-slate-900">Historial (i):</span>
+                <table className="w-full text-left text-xs sm:text-sm font-mono-code border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-600 text-[11px]">
+                      <th className="py-0.5">i</th>
+                      <th className="py-0.5">Pos</th>
+                      <th className="py-0.5">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {currentStep.probeHistory.length > 0 ? (
+                      currentStep.probeHistory.map((ph, idx) => (
+                        <tr key={idx} className="border-b border-slate-200/60">
+                          <td className="py-0.5 text-amber-700 font-bold">{ph.i}</td>
+                          <td className="py-0.5 text-blue-800 font-bold">[{ph.targetIdx}]</td>
+                          <td className="py-0.5">
+                            <span className={`text-[10px] sm:text-xs px-1.5 py-0.5 rounded font-sans font-semibold ${
+                              ph.outcome.includes('Colisión') 
+                                ? 'bg-rose-100 text-rose-800 border border-rose-200' 
+                                : ph.outcome.includes('Duplicado') 
+                                ? 'bg-sky-100 text-sky-800 border border-sky-200' 
+                                : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                            }`}>
+                              {ph.outcome}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="3" className="py-1 text-center text-slate-400 font-sans italic text-xs">
+                          Sin registros.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* 4. REGISTRO DE REDIMENSIÓN */}
+              {currentStep.rehashLog && (
+                <div className="bg-purple-50 border border-purple-200 p-2.5 rounded-lg text-xs flex flex-col gap-1">
+                  <span className="font-bold text-purple-900">Redimensión:</span>
+                  <span className="text-slate-800 text-[11px] font-medium leading-snug">{currentStep.rehashLog.reason}</span>
+                  <div className="flex justify-between text-[11px] text-purple-900 font-mono-code pt-1 border-t border-purple-200">
+                    <span>N: {currentStep.rehashLog.oldN} → {currentStep.rehashLog.newN}</span>
+                    <span>Cant: {currentStep.rehashLog.transferredCount}</span>
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+          </div>
+
+        </div>
+      );
+    }
+
+    // Renderizar la aplicación React
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
